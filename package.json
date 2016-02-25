@@ -1,0 +1,22 @@
+{
+  "name": "my-promise",
+  "version": "0.0.1",
+  "description": "A Promises/A+ implementation",
+  "main": "index.js",
+  "dependencies": {
+  
+  },
+  "devDependencies": {
+      "promises-aplus-tests": "*"
+  },
+  "scripts": {
+    "test": "promises-aplus-tests test/adapter"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhangpenglin/my-promise.git"
+  },
+  "author": "Zhang Penglin",
+  "license": "MIT"
+
+}

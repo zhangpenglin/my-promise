@@ -159,17 +159,5 @@ Promise.reject = function(reason) {
 		reject(reason)
 	})
 }
-Promise.deferred = function() {
-	var resolve, reject;
-	var promise = new Promise(function(_resolve, _reject) {
-		resolve = _resolve;
-		reject = _reject;
-	});
-	return {
-		promise: promise,
-		resolve: resolve,
-		reject: reject
-	};
-}
 
 module.exports = Promise

@@ -1,3 +1,11 @@
+
 # my-promise
 
-a Promise A+ implementation 
+A Promises/A+ implementation
+
+#Test
+
+```
+npm test
+
+``` 
