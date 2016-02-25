@@ -12,35 +12,39 @@ function isObject(value) {
 	return typeof value == "object"
 }
 
-function excute(handler, value, nextPromise) {
+function excute(handler, value, next, reject) {
 	try {
 		var x = handler(value)
-		resolvePromise(nextPromise, x)
+		resolvePromise(next, x)
 	} catch (e) {
-		return nextPromise.reject(e)
+		return reject(e)
 	}
 }
 
 function resolvePromise(promise, x) {
-	var resolve=resolve.bind(promise);
-	var reject=resolve.bind(promise);
 	//promise解析流程
 	var then
 	var called = false;
 	if (promise === x) {
 		//如果promise 和 x 指向相同的值, 使用 TypeError做为原因将promise拒绝。
-		reject(new TypeError("promise and x is same"))
+		return reject(promise, new TypeError("promise and x is same"))
 	} else if (x instanceof Promise) {
 		//如果 x 是一个promise
 		if (x.state == "pending") {
 			//todo
 			x.then(function(v) {
 				resolvePromise(promise, v)
-			}, reject)
+			}, function(reason) {
+				reject(promise, reason)
+			})
 		} else {
-			x.then(resolve, reject)
+			x.then(function(value) {
+				resolve(promise, value)
+			}, function(reason) {
+				reject(promise, reason)
+			})
 		}
-	} else if (isFunction(x) || isObject(x)) {
+	} else if ((x !== null) && (isFunction(x) || isObject(x))) {
 		//thenable
 		try {
 			then = x.then;
@@ -52,18 +56,18 @@ function resolvePromise(promise, x) {
 				}, function(r) {
 					if (called) return
 					called = true
-					return reject(r)
+					return reject(promise, r)
 				})
 			} else {
-				return resolve(x)
+				return resolve(promise, x)
 			}
 		} catch (e) {
 			if (called) return
 			called = true
-			return reject(e)
+			return reject(promise, e)
 		}
 	} else {
-		return resolve(x)
+		return resolve(promise, x)
 	}
 }
 
@@ -75,88 +79,75 @@ function Promise(resolver) {
 	var self = this;
 	self.state = "pending";
 	self.callbacks = [];
-	resolver(self.resolve.bind(self), self.reject.bind(self));
+	try {
+		resolver(function(value) {
+			resolve(self, value)
+		}, function(reason) {
+			reject(self, reason)
+		});
+	} catch (e) {
+		reject(self, value)
+	}
 }
-Promise.prototype.resolve = function (value) {
-	var self=this;
-	setTimeout(function() {
-		if (self.state != "pending") return
-		self.state = "fullfilled"
-		self.data = value
-		for (var i = 0; i < self.callbacks.length; i++) {
-			var handler = self.callbacks[i]._onFulfillQueue;
+
+function resolve(promise, value) {
+	asyncCall(function() {
+		if (promise.state != "pending") return
+		promise.state = "fullfilled"
+		promise.data = value
+		for (var i = 0; i < promise.callbacks.length; i++) {
+			var handler = promise.callbacks[i]._onFulfillQueue;
 			handler(value)
 		}
 	})
 }
-Promise.prototype.reject = function(reason) {
-		var self=this;
-	setTimeout(function() {
-		if (self.state != "pending") return
-		self.state = "rejected"
-		self.data = reason
-		for (var i = 0; i < self.callbacks.length; i++) {
-			var handler = self.callbacks[i]._onRejectQueue;
+
+function reject(promise, reason) {
+	asyncCall(function() {
+		if (promise.state != "pending") return
+		promise.state = "rejected"
+		promise.data = reason
+		for (var i = 0; i < promise.callbacks.length; i++) {
+			var handler = promise.callbacks[i]._onRejectQueue;
 			handler(reason)
 		}
 	})
 }
 Promise.prototype.then = function(onFulfilled, onRejected) {
-    onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : function(v){return v}
-    onRejected = typeof onRejected === 'function' ? onRejected : function(r){throw r}
-    var self = this
-    var promise2
+	onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : function(v) {
+		return v
+	}
+	onRejected = typeof onRejected === 'function' ? onRejected : function(r) {
+		throw r
+	}
+	var self = this
+	var promise2
+	return promise2 = new Promise(function(resolve, reject) {
 
-    if (self.state === 'fullfilled') {
-      return promise2 = new Promise(function(resolve, reject) {
-        setTimeout(function() {
-          try {
-            var value = onFulfilled(self.data)
-            resolvePromise(promise2, value)
-          } catch(e) {
-            return reject(e)
-          }
-        })
-      })
-    }
+		if (self.state === 'fullfilled') {
+			asyncCall(function() {
+				excute(onFulfilled, self.data, promise2, reject)
+			})
+		}
+		if (self.state === 'rejected') {
+			asyncCall(function() {
+				excute(onRejected, self.data, promise2, reject)
+			})
+		}
+		if (self.state === 'pending') {
 
-    if (self.state === 'rejected') {
-      return promise2 = new Promise(function(resolve, reject) {
-        setTimeout(function() {
-          try {
-            var value = onRejected(self.data)
-            resolvePromise(promise2, value)
-          } catch(e) {
-            return reject(e)
-          }
-        })
-      })
-    }
+			self.callbacks.push({
+				_onFulfillQueue: function(value) {
+					excute(onFulfilled, value, promise2, reject)
+				},
+				_onRejectQueue: function(reason) {
+					excute(onRejected, reason, promise2, reject)
 
-    if (self.state === 'pending') {
-      return promise2 = new Promise(function(resolve, reject) {
-        self.callbacks.push({
-          _onFulfillQueue: function(value) {
-            try {
-              var value = onFulfilled(value)
-              resolvePromise(promise2, value)
-            } catch(e) {
-              return reject(e)
-            }
-          },
-          _onRejectQueue: function(reason) {
-            try {
-              var value = onRejected(reason)
-              resolvePromise(promise2, value)
-            } catch(e) {
-              return reject(e)
-            }
-          }
-        })
-        
-      })
-    }
-  }
+				}
+			})
+		}
+	})
+}
 Promise.resolve = function(value) {
 	return new Promise(function(resolve) {
 		resolve(value)
